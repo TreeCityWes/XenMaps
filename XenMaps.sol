@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: MIT 
 pragma solidity ^0.8.23;
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/token/ERC721/ERC721.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/access/Ownable.sol";
-import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/v4.0.0/contracts/utils/Strings.sol";
-import "https://github.com/bokkypoobah/BokkyPooBahsDateTimeLibrary/blob/master/contracts/BokkyPooBahsDateTimeLibrary.sol";
-import "./Base64.sol";
 
-contract XenMaps is ERC721, Ownable {
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./Base64.sol";
+import "./BokkyPooBahsDateTimeLibrary.sol"; 
+
+contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
     using Strings for uint256;
+
     uint256 private tokenIdCounter;
     event Minted(uint256 indexed tokenId, address indexed owner);
     event BlockDataWritten(uint256 indexed tokenId, string message);
+
     struct XenMapsMetadata {
         string title;
         string message;
@@ -20,11 +24,14 @@ contract XenMaps is ERC721, Ownable {
     mapping(uint256 => XenMapsMetadata) private xenMapsMetadata;
     mapping(string => uint256) private blockNumberToTokenId;
 
-    constructor() ERC721("XenMaps", "XMAP") Ownable() {
+    constructor(string memory _name, string memory _symbol) 
+        ERC721(_name, _symbol)
+        Ownable(msg.sender) 
+    {
         tokenIdCounter = 1;
     }
 
-    function mint(string memory blockNumber) public {
+    function mint(string memory blockNumber) public nonReentrant {
         require(validateBlockNumber(blockNumber), "Err: Check token");
         string memory lowercaseBlockNumber = toLower(blockNumber);
         require(blockNumberToTokenId[lowercaseBlockNumber] == 0, "Err: Check token");
@@ -40,30 +47,25 @@ contract XenMaps is ERC721, Ownable {
         emit Minted(tokenId, msg.sender);
     }
 
-    function writeBlockData(string memory blockNumber, string memory message) public {
-        
+    function writeBlockData(string memory blockNumber, string memory message) public nonReentrant {
         uint256 tokenId = blockNumberToTokenId[toLower(blockNumber)];
         require(tokenId != 0, "Err: Check token");
         require(ownerOf(tokenId) == msg.sender, "Err: Check token");
         require(bytes(message).length <= 140, "Err: Check token");
-        
-        message = escapeHTML(message); // Escape the user-submitted message to prevent HTML injection
-        
+        message = escapeHTML(message); 
         XenMapsMetadata storage metadata = xenMapsMetadata[tokenId];
         metadata.message = message;
         emit BlockDataWritten(tokenId, message);
     }
 
-
     function readBlockData(string memory blockNumber) public view returns (string memory message, uint256 tokenId) {
         tokenId = blockNumberToTokenId[toLower(blockNumber)];
         require(tokenId != 0, "Err: Check token");
         message = xenMapsMetadata[tokenId].message;
-        return (message, tokenId);
     }
 
     function getBlockNumberByTokenId(uint256 tokenId) public view returns (string memory) {
-        require(_exists(tokenId), "Err: Check token");
+        require(ownerOf(tokenId) != address(0), "Err: Check token"); 
         return xenMapsMetadata[tokenId].title;
     }
 
@@ -119,7 +121,7 @@ contract XenMaps is ERC721, Ownable {
     }
 
     function generateSVG(uint256 tokenId) internal view returns (string memory) {
-        require(_exists(tokenId), "Err: Check token");
+        require(ownerOf(tokenId) != address(0), "Err: Check token");
         XenMapsMetadata memory metadata = xenMapsMetadata[tokenId];
         string memory contractAddress = "0xYourContractAddress";
         string memory blockNumber = metadata.title;
@@ -166,7 +168,7 @@ contract XenMaps is ERC721, Ownable {
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        require(_exists(tokenId), "Err: Check token");
+        require(ownerOf(tokenId) != address(0), "Error: Invalid input or token already exists."); // Updated check
         XenMapsMetadata memory metadata = xenMapsMetadata[tokenId];
         string memory imageSVG = generateSVG(tokenId);
         string memory imageURI = string(abi.encodePacked('data:image/svg+xml;base64,', Base64.encode(bytes(imageSVG))));
@@ -207,6 +209,4 @@ contract XenMaps is ERC721, Ownable {
         }
         return escapedStr;
     }
-
-
 }
