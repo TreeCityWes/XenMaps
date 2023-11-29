@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT 
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
@@ -6,12 +6,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./Base64.sol";
-import "./BokkyPooBahsDateTimeLibrary.sol"; 
+import "./BokkyPooBahsDateTimeLibrary.sol";
+import "./XenMaps-Views.sol"; 
 
 contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
     using Strings for uint256;
 
-    uint256 private tokenIdCounter;
+    uint256 public tokenIdCounter;
     event Minted(uint256 indexed tokenId, address indexed owner);
     event BlockDataWritten(uint256 indexed tokenId, string message);
 
@@ -22,16 +23,23 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
     }
 
     mapping(uint256 => XenMapsMetadata) private xenMapsMetadata;
-    mapping(string => uint256) private blockNumberToTokenId;
-    mapping(address => uint256[]) private ownerToTokenIds; // Added mapping to store token IDs by owner
+    mapping(string => uint256) internal blockNumberToTokenId;
 
-    constructor() ERC721("XenMaps", "XMAP") Ownable(msg.sender) {
+    XenMapsViewsInterface public xenMapsViews; // Declare a state variable for the interface
+
+    constructor(string memory _name, string memory _symbol)
+        ERC721(_name, _symbol)
+        Ownable(msg.sender)
+    {
         tokenIdCounter = 1;
     }
 
+    function setXenMapsViewsAddress(address _xenMapsViewsAddress) public onlyOwner {
+        xenMapsViews = XenMapsViewsInterface(_xenMapsViewsAddress);
+
+    }
     function mint(string memory blockNumber) public nonReentrant {
-        require(validateBlockNumber(blockNumber), "Err: Check token");
-        string memory lowercaseBlockNumber = toLower(blockNumber);
+        string memory lowercaseBlockNumber = xenMapsViews.toLower(blockNumber);
         require(blockNumberToTokenId[lowercaseBlockNumber] == 0, "Err: Check token");
         uint256 tokenId = tokenIdCounter;
         tokenIdCounter++;
@@ -43,77 +51,41 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
         });
         _mint(msg.sender, tokenId);
         emit Minted(tokenId, msg.sender);
-        ownerToTokenIds[msg.sender].push(tokenId);
-
     }
 
     function writeBlockData(string memory blockNumber, string memory message) public nonReentrant {
-        uint256 tokenId = blockNumberToTokenId[toLower(blockNumber)];
+        uint256 tokenId = blockNumberToTokenId[xenMapsViews.toLower(blockNumber)];
         require(tokenId != 0, "Err: Check token");
         require(ownerOf(tokenId) == msg.sender, "Err: Check token");
         require(bytes(message).length <= 140, "Err: Check token");
-        message = escapeHTML(message); 
+        message = escapeHTML(message);
         XenMapsMetadata storage metadata = xenMapsMetadata[tokenId];
         metadata.message = message;
         emit BlockDataWritten(tokenId, message);
     }
 
-
-    function toLower(string memory str) internal pure returns (string memory) {
-        bytes memory strBytes = bytes(str);
-        for (uint256 i = 0; i < strBytes.length; i++) {
-            if ((uint8(strBytes[i]) >= 65) && (uint8(strBytes[i]) <= 90)) {
-                strBytes[i] = bytes1(uint8(strBytes[i]) + 32);
-            }
-        }
-        return string(strBytes);
+    function getBlockNumberByTokenId(uint256 tokenId) public view returns (string memory) {
+        require(ownerOf(tokenId) != address(0), "Err: Check token");
+        return xenMapsMetadata[tokenId].title;
     }
 
-    function validateBlockNumber(string memory blockNumber) internal pure returns (bool) {
-        bytes memory blockNumberBytes = bytes(blockNumber);
-        bytes memory suffixBytes = bytes(".xenmap");
-        uint256 suffixLength = suffixBytes.length;
-        if (blockNumberBytes.length < suffixLength) {
-            return false;
-        }
-        for (uint256 i = 0; i < suffixLength; i++) {
-            if (blockNumberBytes[blockNumberBytes.length - suffixLength + i] != suffixBytes[i]) {
-                return false;
-            }
-        }
-        return true;
+    function getTokenIdByBlockNumber(string memory blockNumber) public view returns (uint256) {
+        return blockNumberToTokenId[blockNumber];
     }
 
-    function mintDateToString(uint256 mintDate) internal pure returns (string memory) {
-        (uint year, uint month, uint day, , , ) = BokkyPooBahsDateTimeLibrary.timestampToDateTime(mintDate);
-        return string(abi.encodePacked(
-            uintToString(day), "/", uintToString(month), "/", uintToString(year)
-        ));
+    function mintDateToString(uint256 mintDate) internal view returns (string memory) {
+        return xenMapsViews.mintDateToString(mintDate);
     }
 
-    function uintToString(uint256 value) internal pure returns (string memory) {
-        if (value == 0) {
-            return "0";
-        }
-        uint256 tempValue = value;
-        uint256 digits;
-        while (tempValue != 0) {
-            digits++;
-            tempValue /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits--;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-        return string(buffer);
+    function uintToString(uint256 value) internal view returns (string memory) {
+        return xenMapsViews.uintToString(value);
     }
+
 
     function generateSVG(uint256 tokenId) internal view returns (string memory) {
         require(ownerOf(tokenId) != address(0), "Err: Check token");
         XenMapsMetadata memory metadata = xenMapsMetadata[tokenId];
-        string memory xenMapsText = "$XMAP";
+        string memory contractAddress = Strings.toHexString(uint160(address(this)), 20); // Get the contract address
         string memory blockNumber = metadata.title;
         string memory message = metadata.message;
         string memory mintDateString = mintDateToString(metadata.mintDate);
@@ -137,7 +109,7 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
             '<rect width="92%" height="94%" fill="transparent" rx="10px" ry="10px" stroke="#008000" stroke-width="3" stroke-dasharray="5,5" x="4%" y="3%" />',
             '<rect width="94%" height="96%" fill="transparent" rx="10px" ry="10px" stroke-linejoin="round" stroke-dasharray="5,5" x="3%" y="2%" />',
             '<text x="50%" y="5%" class="contract-text" dominant-baseline="middle" text-anchor="middle" font-family="Calibri" font-size="12px" font-weight="400" fill="black">',
-            xenMapsText, '</text>',
+            string(abi.encodePacked("$XMAP: ", contractAddress)), '</text>',
             '<path fill="white" d="M122.7,227.1 l-4.8,0l55.8,-74l0,3.2l-51.8,-69.2l5,0l48.8,65.4l-1.2,0l48.8,-65.4l4.8,0l-51.2,68.4l0,-1.6l55.2,73.2l-5,0l-52.8,-70.2l1.2,0l-52.8,70.2z" vector-effect="non-scaling-stroke" />',
             '<text x="50%" y="50%" class="base" dominant-baseline="middle" text-anchor="middle" font-family="Calibri" font-size="44px" font-weight="400" fill="white" text-shadow="2px 2px 4px rgba(0, 0, 0, 0.5)">XenMaps</text>',
             '<text x="50%" y="63%" class="base" dominant-baseline="middle" text-anchor="middle" font-family="Calibri" font-size="36px" font-weight="400" fill="white" text-shadow="2px 2px 4px rgba(0, 0, 0, 0.5)">', blockNumber, '</text>',
@@ -150,7 +122,6 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
             '<text x="50%" y="95%" class="base" dominant-baseline="middle" text-anchor="middle" font-family="Calibri" font-size="14px" font-weight="400" fill="black">',
             'Date Minted: ', mintDateString,
             '</text>',
-
             '</svg>'
         ));
 
@@ -199,9 +170,4 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
         }
         return escapedStr;
     }
-    
-    function getTokenIdsByOwner(address owner) public view returns (uint256[] memory) {
-        return ownerToTokenIds[owner];
-    }
-
 }
