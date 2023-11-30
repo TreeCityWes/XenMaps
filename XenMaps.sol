@@ -1,10 +1,22 @@
+//8b        d8                          88b           d88                                      
+// Y8,    ,8P                           888b         d888                                      
+//  `8b  d8'                            88`8b       d8'88                                      
+//    Y88P      ,adPPYba,  8b,dPPYba,   88 `8b     d8' 88  ,adPPYYba,  8b,dPPYba,   ,adPPYba,  
+//   d88b     a8P_____88  88P'   `"8a  88  `8b   d8'  88  ""     `Y8  88P'    "8a  I8[    ""  
+//  ,8P  Y8,   8PP"""""""  88       88  88   `8b d8'   88  ,adPPPPP88  88       d8   `"Y8ba,   
+// d8'    `8b  "8b,   ,aa  88       88  88    `888'    88  88,    ,88  88b,   ,a8"  aa    ]8I  
+//8P        Y8  `"Ybbd8"'  88       88  88     `8'     88  `"8bbdP"Y8  88`YbbdP"'   `"YbbdP"'  
+//                                                                     88                      
+//                                                                     88                      
+// Code mined by TreeCityWes.eth
+// XenMaps.io // Xen.Network
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol"; 
 import "./Base64.sol";
 import "./BokkyPooBahsDateTimeLibrary.sol";
 import "./XenMaps-Views.sol"; 
@@ -25,7 +37,7 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
     mapping(uint256 => XenMapsMetadata) private xenMapsMetadata;
     mapping(string => uint256) internal blockNumberToTokenId;
 
-    XenMapsViewsInterface public xenMapsViews; // Declare a state variable for the interface
+    XenMapsViewsInterface public xenMapsViews; 
 
     constructor(string memory _name, string memory _symbol)
         ERC721(_name, _symbol)
@@ -40,7 +52,7 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
     }
     function mint(string memory blockNumber) public nonReentrant {
         string memory lowercaseBlockNumber = xenMapsViews.toLower(blockNumber);
-        require(blockNumberToTokenId[lowercaseBlockNumber] == 0, "Err: Check token");
+        require(blockNumberToTokenId[lowercaseBlockNumber] == 0, "Error: Check Input, Token Existance, or Permission");
         uint256 tokenId = tokenIdCounter;
         tokenIdCounter++;
         blockNumberToTokenId[lowercaseBlockNumber] = tokenId;
@@ -55,9 +67,9 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
 
     function writeBlockData(string memory blockNumber, string memory message) public nonReentrant {
         uint256 tokenId = blockNumberToTokenId[xenMapsViews.toLower(blockNumber)];
-        require(tokenId != 0, "Err: Check token");
-        require(ownerOf(tokenId) == msg.sender, "Err: Check token");
-        require(bytes(message).length <= 140, "Err: Check token");
+        require(tokenId != 0, "Error: Check Input, Token Existance, or Permission");
+        require(ownerOf(tokenId) == msg.sender, "Error: Check Input, Token Existance, or Permission");
+        require(bytes(message).length <= 140, "Error: Check Input, Token Existance, or Permission");
         message = escapeHTML(message);
         XenMapsMetadata storage metadata = xenMapsMetadata[tokenId];
         metadata.message = message;
@@ -65,7 +77,7 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
     }
 
     function getBlockNumberByTokenId(uint256 tokenId) public view returns (string memory) {
-        require(ownerOf(tokenId) != address(0), "Err: Check token");
+        require(ownerOf(tokenId) != address(0), "Error: Check Input, Token Existance, or Permission");
         return xenMapsMetadata[tokenId].title;
     }
 
@@ -83,7 +95,7 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
 
 
     function generateSVG(uint256 tokenId) internal view returns (string memory) {
-        require(ownerOf(tokenId) != address(0), "Err: Check token");
+        require(ownerOf(tokenId) != address(0), "Error: Check Input, Token Existance, or Permission");
         XenMapsMetadata memory metadata = xenMapsMetadata[tokenId];
         string memory contractAddress = Strings.toHexString(uint160(address(this)), 20); // Get the contract address
         string memory blockNumber = metadata.title;
@@ -128,8 +140,14 @@ contract XenMaps is ERC721Enumerable, Ownable, ReentrancyGuard {
         return svg;
     }
 
+    function getXenMapsMetadata(uint256 tokenId) public view returns (XenMapsMetadata memory) {
+        require(ownerOf(tokenId) != address(0), "Error: Check Input, Token Existance, or Permission");
+        return xenMapsMetadata[tokenId];
+    }
+
+
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        require(ownerOf(tokenId) != address(0), "Error: Invalid input or token already exists."); // Updated check
+        require(ownerOf(tokenId) != address(0), "Error: Invalid input or token does not exist."); // Updated check
         XenMapsMetadata memory metadata = xenMapsMetadata[tokenId];
         string memory imageSVG = generateSVG(tokenId);
         string memory imageURI = string(abi.encodePacked('data:image/svg+xml;base64,', Base64.encode(bytes(imageSVG))));

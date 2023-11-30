@@ -16,20 +16,22 @@ interface XenMapsViewsInterface {
 contract XenMapsViews is XenMapsViewsInterface {
     XenMaps public xenMapsContract;
     address public owner;
-    
+
     constructor(address _xenMapsAddress) {
         xenMapsContract = XenMaps(_xenMapsAddress);
         owner = msg.sender;
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Caller is not the owner");
+        require(msg.sender == owner, "Error: Check Input, Token Existence, or Permission");
         _; // Correct placement of the semicolon
     }
 
     function checkTokenIdByBlockNumber(string memory blockNumber) external view override returns (uint256) {
         string memory lowercaseBlockNumber = toLower(blockNumber);
-        return xenMapsContract.getTokenIdByBlockNumber(lowercaseBlockNumber);
+        uint256 tokenId = xenMapsContract.getTokenIdByBlockNumber(lowercaseBlockNumber);
+        require(tokenId != 0, "Error: Check Input, Token Existence, or Permission");
+        return tokenId;
     }
 
     function listAllTokensByOwner(address ownerAddress) external view override returns (uint256[] memory) {
@@ -81,6 +83,15 @@ contract XenMapsViews is XenMapsViewsInterface {
             }
         }
         return string(strBytes);
+    }
+
+    function readBlockData(string memory blockNumber) public view returns (string memory) {
+        string memory lowercaseBlockNumber = toLower(blockNumber);
+        uint256 tokenId = xenMapsContract.getTokenIdByBlockNumber(lowercaseBlockNumber);
+        require(tokenId != 0, "Error: Check Input, Token Existence, or Permission");
+
+        XenMaps.XenMapsMetadata memory metadata = xenMapsContract.getXenMapsMetadata(tokenId);
+        return metadata.message;
     }
 
     function validateBlockNumber(string memory blockNumber) external pure override returns (bool) {
